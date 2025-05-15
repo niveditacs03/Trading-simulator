@@ -7,7 +7,7 @@ url = "wss://ws.gomarket-cpp.goquant.io/ws/l2-orderbook/okx/BTC-USDT-SWAP"
 
 async def connect():
     async with websockets.connect(url) as ws:
-        print("Connected to OKX L2 Orderbook WebSocket")
+        print("connected")
         while True:
             try:
                 raw_data = await ws.recv()

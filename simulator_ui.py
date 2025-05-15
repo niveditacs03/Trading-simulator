@@ -1,54 +1,115 @@
 import tkinter as tk
+from tkinter import ttk
 from orderbook_ws import OrderbookProcessor
+import asyncio
+import threading
 
-class TradeSimulatorApp:
+class UI:
     def __init__(self, root):
         self.root = root
-        self.root.title("GoQuant Trade Simulator")
+        self.root.title("Orderbook Simulator with Regression")
+        self.root.geometry("700x700")
 
-        frame_left = tk.Frame(root)
-        frame_left.pack(side=tk.LEFT, padx=10, pady=10)
+        self.obp = OrderbookProcessor()
+        self.left_frame = ttk.Frame(root, padding=10)
+        self.left_frame.pack(side=tk.LEFT, fill=tk.Y)
 
-        tk.Label(frame_left, text="Symbol:").pack()
-        self.symbol_entry = tk.Entry(frame_left)
-        self.symbol_entry.insert(0, "BTC-USDT-SWAP")
-        self.symbol_entry.pack()
+        self.right_frame = ttk.Frame(root, padding=10)
+        self.right_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True)
+     
+        # left panel
+        ttk.Label(self.left_frame, text="Parameters", font=("Arial", 14, "bold")).pack(pady=(0,10))
+       
+       #exchange
+        ttk.Label(self.left_frame, text="Exchange:").pack(anchor="w")
+        self.exchange_var = tk.StringVar(value="OKX")
+        self.exchange_combo = ttk.Combobox(self.left_frame, textvariable=self.exchange_var, state="readonly")
+        self.exchange_combo['values'] = ["OKX"]  # You can add more exchanges here later
+        self.exchange_combo.pack(fill=tk.X, pady=5)
 
-        tk.Label(frame_left, text="Order Qty ($):").pack()
-        self.qty_entry = tk.Entry(frame_left)
-        self.qty_entry.insert(0, "30")
-        self.qty_entry.pack()
+        #spot assest
+        ttk.Label(self.left_frame, text="Spot Asset:").pack(anchor="w")
+        self.asset_var = tk.StringVar(value="BTC-USDT-SWAP")
+        self.asset_combo = ttk.Combobox(self.left_frame, textvariable=self.asset_var, state="readonly")
+        self.asset_combo['values'] = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP"]  
+        self.asset_combo.pack(fill=tk.X, pady=5)
 
-        self.predict_button = tk.Button(frame_left, text="Predict Maker/Taker", command=self.update_metrics)
-        self.predict_button.pack(pady=5)
+        #order type    
+        ttk.Label(self.left_frame, text="Order Type:").pack(anchor="w")
+        self.order_type_var = tk.StringVar(value="market")
+        self.order_type_combo = ttk.Combobox(self.left_frame, textvariable=self.order_type_var, state="readonly")
+        self.order_type_combo['values'] = ["market"]  
+        self.order_type_combo.pack(fill=tk.X, pady=5)
+        
+        #order qnty
+        ttk.Label(self.left_frame, text="Order Quantity:").pack(anchor="w")
+        self.qty_entry = ttk.Entry(self.left_frame)
+        self.qty_entry.insert(0, "100")
+        self.qty_entry.pack(fill=tk.X, pady=5)
 
-        self.proportion_label = tk.Label(frame_left, text="Maker: 0%, Taker: 0%")
-        self.proportion_label.pack()
+        #volaitily
+        ttk.Label(self.left_frame, text="Volatility:").pack(anchor="w")
+        self.volatility_entry = ttk.Entry(self.left_frame)
+        self.volatility_entry.insert(0, "0.02")
+        self.volatility_entry.pack(fill=tk.X, pady=5)
 
-        frame_right = tk.Frame(root)
-        frame_right.pack(side=tk.LEFT, padx=10, pady=10)
+        #fee tier
+        ttk.Label(self.left_frame, text="Fee Tier (decimal):").pack(anchor="w")
+        self.fee_tier_entry = ttk.Entry(self.left_frame)
+        self.fee_tier_entry.insert(0, "0.001")
+        self.fee_tier_entry.pack(fill=tk.X, pady=5)
 
-        self.text = tk.Text(frame_right, width=40, height=15)
-        self.text.pack()
+        self.update_button = ttk.Button(self.left_frame, text="Refresh", command=self.update_metrics)
+        self.update_button.pack(pady=20)
 
-        self.obp = OrderbookProcessor(symbol=self.symbol_entry.get())
-        self.obp.start()
-        self.update_loop()
+        # right panel
+        ttk.Label(self.right_frame, text="Live Orderbook Metrics", font=("Arial", 14, "bold")).pack(pady=(0,10))
+
+        self.metrics_text = tk.Text(self.right_frame, width=40, height=18, state=tk.DISABLED, font=("Courier", 11))
+        self.metrics_text.pack(fill=tk.BOTH, expand=True)
+
+        self.proportion_label = ttk.Label(self.right_frame, text="Maker: 0%, Taker: 0%", font=("Arial", 12, "italic"))
+        self.proportion_label.pack(pady=10)
+
+        # separate thread to not block Tkinter mainloop
+        threading.Thread(target=lambda: asyncio.run(self.obp.connect()), daemon=True).start()
+        
+        #update ui
+        self.root.after(1000, self.refresh_ui)
 
     def update_metrics(self):
+        try:
+            order_qty = float(self.qty_entry.get())
+        except:
+            order_qty = 100
+
+        try:
+            volatility = float(self.volatility_entry.get())
+        except:
+            volatility = 0.02
+
+        try:
+            fee_tier = float(self.fee_tier_entry.get())
+        except:
+            fee_tier = 0.001
+
+        self.obp.update_params(order_qty=order_qty, volatility=volatility, fee_tier=fee_tier)
+        self.refresh_ui()
+
+    def refresh_ui(self):
         metrics = self.obp.get_metrics()
-        self.text.delete("1.0", tk.END)
-        for k, v in metrics.items():
-            self.text.insert(tk.END, f"{k}: {v}\n")
+        self.metrics_text.config(state=tk.NORMAL)
+        self.metrics_text.delete("1.0", tk.END)
 
-        maker, taker = self.obp.predict_maker_taker()
-        self.proportion_label.config(text=f"Maker: {maker}%, Taker: {taker}%")
+        for key, value in metrics.items():
+            self.metrics_text.insert(tk.END, f"{key:15}: {value}\n")
 
-    def update_loop(self):
-        self.update_metrics()
-        self.root.after(1000, self.update_loop)  
+        self.metrics_text.config(state=tk.DISABLED)
+
+        self.proportion_label.config(text=f"Maker: {metrics.get('Maker %', 0)}%, Taker: {metrics.get('Taker %', 0)}%")
+        self.root.after(1000, self.refresh_ui)
 
 if __name__ == "__main__":
     root = tk.Tk()
-    app = TradeSimulatorApp(root)
+    app = UI(root)
     root.mainloop()
