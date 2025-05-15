@@ -24,7 +24,7 @@ class UI:
         ttk.Label(self.left_frame, text="Exchange:").pack(anchor="w")
         self.exchange_var = tk.StringVar(value="OKX")
         self.exchange_combo = ttk.Combobox(self.left_frame, textvariable=self.exchange_var, state="readonly")
-        self.exchange_combo['values'] = ["OKX"]  # You can add more exchanges here later
+        self.exchange_combo['values'] = ["OKX"]  
         self.exchange_combo.pack(fill=tk.X, pady=5)
 
         #spot assest
@@ -75,7 +75,7 @@ class UI:
         threading.Thread(target=lambda: asyncio.run(self.obp.connect()), daemon=True).start()
         
         #update ui
-        self.root.after(1000, self.refresh_ui)
+        self.root.after(1, self.refresh_ui)
 
     def update_metrics(self):
         try:
@@ -96,6 +96,7 @@ class UI:
         self.obp.update_params(order_qty=order_qty, volatility=volatility, fee_tier=fee_tier)
         self.refresh_ui()
 
+#function to refresh ui after every second with the updated values
     def refresh_ui(self):
         metrics = self.obp.get_metrics()
         self.metrics_text.config(state=tk.NORMAL)
@@ -107,9 +108,10 @@ class UI:
         self.metrics_text.config(state=tk.DISABLED)
 
         self.proportion_label.config(text=f"Maker: {metrics.get('Maker %', 0)}%, Taker: {metrics.get('Taker %', 0)}%")
-        self.root.after(1000, self.refresh_ui)
+        self.root.after(1, self.refresh_ui)
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = UI(root)
     root.mainloop()
+

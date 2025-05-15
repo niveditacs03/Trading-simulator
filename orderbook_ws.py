@@ -4,6 +4,7 @@ import json
 import time
 import random
 
+from Almgred import AlmgredChriss
 from regression import RegressionModel
 
 class OrderbookProcessor:
@@ -13,15 +14,14 @@ class OrderbookProcessor:
         self.running = False
         self.latest_tick = None
         self.last_latency = None
-        
-        #for regression
+        self.ac_model=AlmgredChriss()
+     
         self.order_qty = random.uniform(10,2000)
         self.volatility = 0.02
         self.fee_tier = 0.001 
         
         self.reg_model = RegressionModel()
 
-        #metrics
         self.slippage = 0.0
         self.fees = 0.0
         self.market_impact = 0.0
@@ -42,6 +42,7 @@ class OrderbookProcessor:
                     print("WebSocket error:", e)
                     self.running = False
 
+
     def on_message(self, message):
         start_time = time.time()
         data = json.loads(message)
@@ -53,8 +54,12 @@ class OrderbookProcessor:
         volatility = self.volatility
         fee_tier = self.fee_tier
 
-        #predictions
-        slippage, fees, impact, maker, taker = self.reg_model.predict(spread, size, volatility, fee_tier)
+        slippage, fees, _, maker, taker = self.reg_model.predict(spread, size, volatility, fee_tier)
+       
+        mid_price = (float(data["asks"][0][0]) + float(data["bids"][0][0])) / 2
+        impact = self.ac_model.estimate_impact( order_qty=self.order_qty,mid_price=mid_price,volatility=self.volatility)
+        impact=round(impact,4)
+        
         self.slippage = slippage
         self.fees = fees
         self.market_impact = impact
@@ -62,7 +67,7 @@ class OrderbookProcessor:
         self.taker = taker
         self.net_cost = round(slippage + fees, 4)
 
-        self.last_latency = round((time.time() - start_time) * 1000, 2)
+        self.last_latency = round((time.time() - start_time) * 1000, 8) #latency
 
     def get_metrics(self):
         if not self.latest_tick:
@@ -73,7 +78,6 @@ class OrderbookProcessor:
             "Top Bid": self.latest_tick["bids"][0],
             "Top Ask": self.latest_tick["asks"][0],
             "Spread": round(float(self.latest_tick["asks"][0][0]) - float(self.latest_tick["bids"][0][0]), 4),
-            "Order Qty": self.order_qty,
             "Volatility": self.volatility,
             "Fee Tier": self.fee_tier,
             "Slippage": self.slippage,
@@ -83,6 +87,8 @@ class OrderbookProcessor:
             "Taker %": self.taker,
             "Net Cost": self.net_cost,
         }
+        
+    
     def update_params(self, order_qty=None, volatility=None, fee_tier=None, exchange=None, asset=None, order_type=None):
         if order_qty is not None:
             self.order_qty = order_qty
@@ -90,7 +96,6 @@ class OrderbookProcessor:
             self.volatility = volatility
         if fee_tier is not None:
             self.fee_tier = fee_tier
-        # Optional: store these new params
         if exchange is not None:
             self.exchange = exchange
         if asset is not None:
@@ -103,7 +108,6 @@ class OrderbookProcessor:
             order_qty = float(self.qty_entry.get())
         except:
             order_qty = 100
-
         try:
             volatility = float(self.volatility_entry.get())
         except:

@@ -2,11 +2,11 @@ import asyncio
 import websockets
 import json
 import time
-
+#websocket connection
 url = "wss://ws.gomarket-cpp.goquant.io/ws/l2-orderbook/okx/BTC-USDT-SWAP"
 
 async def connect():
-    async with websockets.connect(url) as ws:
+    async with websockets.connect(url) as ws: #for asynchronous connection to the given web socket
         print("connected")
         while True:
             try:

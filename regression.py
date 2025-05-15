@@ -1,6 +1,8 @@
 from sklearn.linear_model import LogisticRegression
 from sklearn.linear_model import LinearRegression
 import numpy as np
+
+#we have logisctic regression only for maker taker model its better to use simple regression for the rest for simplicity and accuracy
 class RegressionModel:
     def __init__(self):
         self.slippage_model = LinearRegression()
@@ -9,6 +11,7 @@ class RegressionModel:
         self.maker_taker_model = LogisticRegression()
         self.synthetic_data()
 
+#we use syntethic data to train the models, this is a custom function to generate synthetic data
     def synthetic_data(self):
         X = []
         y_slippage = []
@@ -40,6 +43,7 @@ class RegressionModel:
         self.impact_model.fit(X, y_impact)
         self.maker_taker_model.fit(X, y_maker_taker)
 
+#final prediction of the model - testing it
     def predict(self, spread, size, volatility, fee_tier):
         features = np.array([[spread, size, volatility, fee_tier]])
 
