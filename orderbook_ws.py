@@ -1,5 +1,3 @@
-import asyncio
-import websockets
 import json
 import time
 import random
@@ -9,9 +7,6 @@ from regression import RegressionModel
 
 class OrderbookProcessor:
     def __init__(self):
-        self.url = f"wss://ws.gomarket-cpp.goquant.io/ws/l2-orderbook/okx/BTC-USDT-SWAP"
-        self.ws = None
-        self.running = False
         self.latest_tick = None
         self.last_latency = None
 
@@ -30,42 +25,34 @@ class OrderbookProcessor:
         self.taker = 0.0
         self.net_cost = 0.0
 
-    async def connect(self):
-        async with websockets.connect(self.url) as ws:
-            self.ws = ws
-            print("Connected to L2 Orderbook WebSocket")
-            self.running = True
-            while self.running:
-                try:
-                    raw_data = await ws.recv()
-                    self.on_message(raw_data)
-                except Exception as e:
-                    print("WebSocket error:", e)
-                    self.running = False
-
     def on_message(self, message):
         start_time = time.time()
         data = json.loads(message)
         self.latest_tick = data
 
         spread = float(data["asks"][0][0]) - float(data["bids"][0][0])
+        top_bid_qty = float(data["bids"][0][1])
+        top_ask_qty = float(data["asks"][0][1])
         size = self.order_qty
         volatility = self.volatility
-
         # regression model predictions
-        slippage, _, _, maker_pct, taker_pct = self.reg_model.predict(spread, size, volatility, self.taker_fee)
-
-        # impact via almgred
+        slippage, maker_pct, taker_pct = self.reg_model.predict(
+            spread, top_bid_qty=top_bid_qty,top_ask_qty=top_ask_qty
+        )
+        # market impact via Almgren-Chriss
         mid_price = (float(data["asks"][0][0]) + float(data["bids"][0][0])) / 2
-        impact = self.ac_model.estimate_impact(order_qty=self.order_qty, mid_price=mid_price, volatility=self.volatility)
+        impact = self.ac_model.estimate_impact(
+            order_qty=self.order_qty,
+            mid_price=mid_price,
+            volatility=self.volatility
+        )
         impact = round(impact, 4)
 
-        #fee calculation-i hope the formula is correct
+        # fee calculation
         maker_fee_cost = self.maker_fee * maker_pct * size
         taker_fee_cost = self.taker_fee * taker_pct * size
         total_fees = round(maker_fee_cost + taker_fee_cost, 4)
 
-        
         self.slippage = round(slippage, 4)
         self.fees = total_fees
         self.market_impact = impact
@@ -118,7 +105,6 @@ class OrderbookProcessor:
             maker_fee = float(self.maker_fee_entry.get())
         except:
             maker_fee = 0.001
-
         try:
             taker_fee = float(self.taker_fee_entry.get())
         except:
@@ -128,12 +114,5 @@ class OrderbookProcessor:
         asset = self.asset_var.get()
         order_type = self.order_type_var.get()
 
-        # refresh
-        self.obp.update_params(order_qty=order_qty, volatility=volatility, fee_tier=fee_tier,
-                            exchange=exchange, asset=asset, order_type=order_type)
+        self.update_params(order_qty=order_qty, volatility=volatility, maker_fee=maker_fee, taker_fee=taker_fee)
         self.refresh_ui()
-
-
-if __name__ == "__main__":
-    obp = OrderbookProcessor()
-    asyncio.run(obp.connect())

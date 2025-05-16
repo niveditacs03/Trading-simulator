@@ -3,6 +3,7 @@ from tkinter import ttk
 from orderbook_ws import OrderbookProcessor
 import asyncio
 import threading
+from okx_wcs import connect
 
 class UI:
     def __init__(self, root):
@@ -52,7 +53,6 @@ class UI:
         self.volatility_entry = ttk.Entry(self.left_frame)
         self.volatility_entry.insert(0, "0.02")
         self.volatility_entry.pack(fill=tk.X, pady=5)
-
        # maker fee
         ttk.Label(self.left_frame, text="Maker fee (decimal):").pack(anchor="w")
         self.maker_fee_entry = ttk.Entry(self.left_frame)
@@ -78,7 +78,7 @@ class UI:
         self.proportion_label.pack(pady=10)
 
         # separate thread to not block Tkinter mainloop
-        threading.Thread(target=lambda: asyncio.run(self.obp.connect()), daemon=True).start()
+        threading.Thread(target=lambda: asyncio.run(connect(self.obp)), daemon=True).start()
         
         #update ui
         self.root.after(1, self.refresh_ui)
@@ -95,11 +95,14 @@ class UI:
             volatility = 0.02
 
         try:
-            fee_tier = float(self.fee_tier_entry.get())
+            maker_fee = float(self.maker_fee_entry.get())
         except:
-            fee_tier = 0.001
-
-        self.obp.update_params(order_qty=order_qty, volatility=volatility, fee_tier=fee_tier)
+            maker_fee = 0.001
+        try:
+            taker_fee = float(self.taker_fee_entry.get())
+        except:
+            taker_fee = 0.001
+        self.obp.update_params(order_qty=order_qty, volatility=volatility, maker_fee=maker_fee,taker_fee=taker_fee)
         self.refresh_ui()
 
 #function to refresh ui after every second with the updated values

@@ -1,60 +1,66 @@
-from sklearn.linear_model import LogisticRegression
-from sklearn.linear_model import LinearRegression
+import pandas as pd
 import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import StandardScaler
+from sklearn.utils import resample
+import os
 
-#we have logisctic regression only for maker taker model its better to use simple regression for the rest for simplicity and accuracy
 class RegressionModel:
-    def __init__(self):
-        self.slippage_model = LinearRegression()
-        self.fees_model = LinearRegression()
-        self.impact_model = LinearRegression()
-        self.maker_taker_model = LogisticRegression()
-        self.synthetic_data()
+    def __init__(self, csv_file="orderbook_data.csv"):
+        self.csv_file = csv_file
+        self.scaler = StandardScaler()
+        self.maker_taker_model = LogisticRegression(class_weight='balanced', random_state=42)
+        self.load_and_train()
 
-#we use syntethic data to train the models, this is a custom function to generate synthetic data
-    def synthetic_data(self):
-        X = []
-        y_slippage = []
-        y_fees = []
-        y_impact = []
-        y_maker_taker = []
+    def load_and_train(self):
+        df = pd.read_csv(self.csv_file)
+        if not os.path.exists(self.csv_file):
+             print("⚠️ File not found. Generating dummy training data.")
+             df = pd.DataFrame({
+                'spread': np.random.uniform(0, 0.1, 1000),
+                'top_bid_qty': np.random.uniform(1, 100, 1000),
+                'top_ask_qty': np.random.uniform(1, 100, 1000),
+                'maker_label': np.random.choice([0, 1], 1000)
+        })
+        else:
+            df = pd.read_csv(self.csv_file)
+            print("CSV Columns:", df.columns.tolist())
+            
+        df["maker_label"] = np.random.choice([0, 1], size=len(df))
+        features = ['spread', 'top_bid_qty', 'top_ask_qty']
+        target = 'maker_label'
 
-        for _ in range(100):
-            spread = np.random.uniform(0.1, 1.0)
-            size = np.random.uniform(10, 200)
-            volatility = np.random.uniform(0.01, 0.05)
-            fee_tier = np.random.uniform(0.0005, 0.002)
+        # Select relevant features and target
+        features = ['spread', 'top_bid_qty', 'top_ask_qty']
+        target = 'maker_label'
 
-            X.append([spread, size, volatility, fee_tier])
+        # Handle imbalance by upsampling the minority class
+        df_maker = df[df[target] == 1]
+        df_taker = df[df[target] == 0]
 
-            slippage =  np.random.normal(0, 0.01)
-            fees = np.random.normal(0, 0.5)
-            impact = np.random.normal(0, 0.01)
-            maker_taker_label = np.random.choice([0, 1])  
+        if len(df_maker) < len(df_taker):
+            df_maker = resample(df_maker, replace=True, n_samples=len(df_taker), random_state=42)
+        else:
+            df_taker = resample(df_taker, replace=True, n_samples=len(df_maker), random_state=42)
 
-            y_slippage.append(slippage)
-            y_fees.append(fees)
-            y_impact.append(impact)
-            y_maker_taker.append(maker_taker_label)
+        df_balanced = pd.concat([df_maker, df_taker])
 
-        X = np.array(X)
-        self.slippage_model.fit(X, y_slippage)
-        self.fees_model.fit(X, y_fees)
-        self.impact_model.fit(X, y_impact)
-        self.maker_taker_model.fit(X, y_maker_taker)
+        X = df_balanced[features].values
+        y = df_balanced[target].values
 
-#final prediction of the model - testing it
-    def predict(self, spread, size, volatility, fee_tier):
-        features = np.array([[spread, size, volatility, fee_tier]])
+        # Standardize features
+        X_scaled = self.scaler.fit_transform(X)
 
-        slippage = self.slippage_model.predict(features)[0]
-        fees = self.fees_model.predict(features)[0]
-        impact = self.impact_model.predict(features)[0]
-        
-        maker_prob = self.maker_taker_model.predict_proba(features)[0][1]  # prob of class 1 (maker)
+        # Train the model
+        self.maker_taker_model.fit(X_scaled, y)
+
+    def predict(self, spread, top_bid_qty, top_ask_qty):
+        features = np.array([[spread, top_bid_qty, top_ask_qty]])
+        features_scaled = self.scaler.transform(features)
+
+        maker_prob = self.maker_taker_model.predict_proba(features_scaled)[0][1]
         taker_prob = 1 - maker_prob
-        maker_pct = round(maker_prob, 2)
-        taker_pct = round(taker_prob, 2)
 
-        return round(slippage, 4), round(fees, 2), round(impact, 4), maker_pct, taker_pct
+        slippage = spread / (top_bid_qty + 1e-9)  # crude placeholder slippage estimate
 
+        return round(slippage, 4), round(maker_prob, 2), round(taker_prob, 2)
