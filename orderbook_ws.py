@@ -14,13 +14,14 @@ class OrderbookProcessor:
         self.running = False
         self.latest_tick = None
         self.last_latency = None
-        self.ac_model=AlmgredChriss()
-     
-        self.order_qty = random.uniform(10,2000)
-        self.volatility = 0.02
-        self.fee_tier = 0.001 
-        
+
+        self.ac_model = AlmgredChriss()
         self.reg_model = RegressionModel()
+
+        self.order_qty = random.uniform(10, 2000)
+        self.volatility = 0.02
+        self.maker_fee = 0.001
+        self.taker_fee = 0.001
 
         self.slippage = 0.0
         self.fees = 0.0
@@ -32,7 +33,7 @@ class OrderbookProcessor:
     async def connect(self):
         async with websockets.connect(self.url) as ws:
             self.ws = ws
-            print(f"Connected to L2 Orderbook WebSocket")
+            print("Connected to L2 Orderbook WebSocket")
             self.running = True
             while self.running:
                 try:
@@ -42,32 +43,37 @@ class OrderbookProcessor:
                     print("WebSocket error:", e)
                     self.running = False
 
-
     def on_message(self, message):
         start_time = time.time()
         data = json.loads(message)
         self.latest_tick = data
 
-        #features for regression
         spread = float(data["asks"][0][0]) - float(data["bids"][0][0])
         size = self.order_qty
         volatility = self.volatility
-        fee_tier = self.fee_tier
 
-        slippage, fees, _, maker, taker = self.reg_model.predict(spread, size, volatility, fee_tier)
-       
+        # regression model predictions
+        slippage, _, _, maker_pct, taker_pct = self.reg_model.predict(spread, size, volatility, self.taker_fee)
+
+        # impact via almgred
         mid_price = (float(data["asks"][0][0]) + float(data["bids"][0][0])) / 2
-        impact = self.ac_model.estimate_impact( order_qty=self.order_qty,mid_price=mid_price,volatility=self.volatility)
-        impact=round(impact,4)
-        
-        self.slippage = slippage
-        self.fees = fees
-        self.market_impact = impact
-        self.maker = maker
-        self.taker = taker
-        self.net_cost = round(slippage + fees, 4)
+        impact = self.ac_model.estimate_impact(order_qty=self.order_qty, mid_price=mid_price, volatility=self.volatility)
+        impact = round(impact, 4)
 
-        self.last_latency = round((time.time() - start_time) * 1000, 8) #latency
+        #fee calculation-i hope the formula is correct
+        maker_fee_cost = self.maker_fee * maker_pct * size
+        taker_fee_cost = self.taker_fee * taker_pct * size
+        total_fees = round(maker_fee_cost + taker_fee_cost, 4)
+
+        
+        self.slippage = round(slippage, 4)
+        self.fees = total_fees
+        self.market_impact = impact
+        self.maker = round(maker_pct * 100, 2)
+        self.taker = round(taker_pct * 100, 2)
+        self.net_cost = round(slippage + total_fees, 4)
+
+        self.last_latency = round((time.time() - start_time) * 1000, 8)
 
     def get_metrics(self):
         if not self.latest_tick:
@@ -79,7 +85,8 @@ class OrderbookProcessor:
             "Top Ask": self.latest_tick["asks"][0],
             "Spread": round(float(self.latest_tick["asks"][0][0]) - float(self.latest_tick["bids"][0][0]), 4),
             "Volatility": self.volatility,
-            "Fee Tier": self.fee_tier,
+            "Maker Fee": self.maker_fee,
+            "Taker Fee": self.taker_fee,
             "Slippage": self.slippage,
             "Fees": self.fees,
             "Market Impact": self.market_impact,
@@ -87,21 +94,16 @@ class OrderbookProcessor:
             "Taker %": self.taker,
             "Net Cost": self.net_cost,
         }
-        
-    
-    def update_params(self, order_qty=None, volatility=None, fee_tier=None, exchange=None, asset=None, order_type=None):
+
+    def update_params(self, order_qty=None, volatility=None, maker_fee=None, taker_fee=None, **kwargs):
         if order_qty is not None:
             self.order_qty = order_qty
         if volatility is not None:
             self.volatility = volatility
-        if fee_tier is not None:
-            self.fee_tier = fee_tier
-        if exchange is not None:
-            self.exchange = exchange
-        if asset is not None:
-            self.asset = asset
-        if order_type is not None:
-            self.order_type = order_type
+        if maker_fee is not None:
+            self.maker_fee = maker_fee
+        if taker_fee is not None:
+            self.taker_fee = taker_fee
 
     def update_metrics(self):
         try:
@@ -112,11 +114,15 @@ class OrderbookProcessor:
             volatility = float(self.volatility_entry.get())
         except:
             volatility = 0.02
+        try:
+            maker_fee = float(self.maker_fee_entry.get())
+        except:
+            maker_fee = 0.001
 
         try:
-            fee_tier = float(self.fee_tier_entry.get())
+            taker_fee = float(self.taker_fee_entry.get())
         except:
-            fee_tier = 0.001
+            taker_fee = 0.001
 
         exchange = self.exchange_var.get()
         asset = self.asset_var.get()

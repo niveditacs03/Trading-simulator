@@ -53,7 +53,8 @@ class RegressionModel:
         
         maker_prob = self.maker_taker_model.predict_proba(features)[0][1]  # prob of class 1 (maker)
         taker_prob = 1 - maker_prob
-        maker_pct = round(maker_prob * 100, 2)
-        taker_pct = round(taker_prob * 100, 2)
+        maker_pct = round(maker_prob, 2)
+        taker_pct = round(taker_prob, 2)
 
         return round(slippage, 4), round(fees, 2), round(impact, 4), maker_pct, taker_pct
+

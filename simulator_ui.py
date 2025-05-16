@@ -53,11 +53,17 @@ class UI:
         self.volatility_entry.insert(0, "0.02")
         self.volatility_entry.pack(fill=tk.X, pady=5)
 
-        #fee tier
-        ttk.Label(self.left_frame, text="Fee Tier (decimal):").pack(anchor="w")
-        self.fee_tier_entry = ttk.Entry(self.left_frame)
-        self.fee_tier_entry.insert(0, "0.001")
-        self.fee_tier_entry.pack(fill=tk.X, pady=5)
+       # maker fee
+        ttk.Label(self.left_frame, text="Maker fee (decimal):").pack(anchor="w")
+        self.maker_fee_entry = ttk.Entry(self.left_frame)
+        self.maker_fee_entry.insert(0, "0.001")
+        self.maker_fee_entry.pack(fill=tk.X, pady=5)
+
+        # taker fee
+        ttk.Label(self.left_frame, text="Taker fee (decimal):").pack(anchor="w")
+        self.taker_fee_entry = ttk.Entry(self.left_frame)
+        self.taker_fee_entry.insert(0, "0.001")
+        self.taker_fee_entry.pack(fill=tk.X, pady=5)
 
         self.update_button = ttk.Button(self.left_frame, text="Refresh", command=self.update_metrics)
         self.update_button.pack(pady=20)
